@@ -1,23 +1,50 @@
 #include "redismodule.h"
 
-#include <crypt.h>
 #include <string.h>
+#include "ow-crypt.h"
 
-#define SHA512_SALT "$5$"
+#define SHA512_SALT "$2y$10"
 
+static char *do_crypt(const char *password, char *output, int output_len)
+{
+    char salt[16];
+    char tmp[64];
+    char *setting;
+
+    FILE *fp = fopen("/dev/urandom","r");
+    if (!fp) return NULL;
+    if (fread(salt, sizeof(salt), 1, fp) != 1) {
+        fclose(fp);
+        return NULL;
+    }
+    fclose(fp);
+
+    memset(tmp, 0, sizeof(tmp));
+    if (!(setting = crypt_gensalt_rn("$2y$", 0, salt, sizeof(salt),
+                    tmp, sizeof(tmp))))
+        return NULL;
+
+    memset(output, 0, output_len);
+    return crypt_rn(password, setting, output, output_len);
+}
 
 static int cmd_password_set(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    struct crypt_data cdata;
     RedisModuleCallReply *reply;
     size_t len;
+    char crypt_buf[64];
+    char *hash;
 
     if (argc != 3) {
         RedisModule_WrongArity(ctx);
         return REDISMODULE_OK;
     }
 
-    reply = RedisModule_Call(ctx, "SET", "sc!", argv[1], crypt_r(
-        RedisModule_StringPtrLen(argv[2], &len), SHA512_SALT, &cdata));
+    hash = do_crypt(RedisModule_StringPtrLen(argv[2], &len), crypt_buf, sizeof(crypt_buf));
+    if (!hash) {
+        RedisModule_ReplyWithError(ctx, "ERR hash error");
+        return REDISMODULE_ERR;
+    }
+    reply = RedisModule_Call(ctx, "SET", "sc!", argv[1], hash);
     RedisModule_ReplyWithCallReply(ctx, reply);
 
     return REDISMODULE_OK;
@@ -25,17 +52,22 @@ static int cmd_password_set(RedisModuleCtx *ctx, RedisModuleString **argv, int a
 
 
 static int cmd_password_hset(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    struct crypt_data cdata;
     RedisModuleCallReply *reply;
     size_t len;
+    char crypt_buf[64];
+    char *hash;
 
     if (argc != 4) {
         RedisModule_WrongArity(ctx);
         return REDISMODULE_OK;
     }
 
-    reply = RedisModule_Call(ctx, "HSET", "ssc!", argv[1], argv[2], crypt_r(
-        RedisModule_StringPtrLen(argv[3], &len), SHA512_SALT, &cdata));
+    hash = do_crypt(RedisModule_StringPtrLen(argv[3], &len), crypt_buf, sizeof(crypt_buf));
+    if (!hash) {
+        RedisModule_ReplyWithError(ctx, "ERR hash error");
+        return REDISMODULE_ERR;
+    }
+    reply = RedisModule_Call(ctx, "HSET", "ssc!", argv[1], argv[2], hash);
     RedisModule_ReplyWithCallReply(ctx, reply);
 
     return REDISMODULE_OK;
@@ -43,13 +75,13 @@ static int cmd_password_hset(RedisModuleCtx *ctx, RedisModuleString **argv, int 
 
 static void validate(RedisModuleCtx *ctx, RedisModuleCallReply *reply, RedisModuleString *password)
 {
-    struct crypt_data cdata;
     const char *reply_str;
     size_t reply_len;
     const char *pass;
     size_t pass_len;
     const char *crypt_pass;
     size_t crypt_pass_len;
+    char crypt_buf[64];
 
     if (RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_NULL) {
         RedisModule_ReplyWithLongLong(ctx, 0);
@@ -64,7 +96,11 @@ static void validate(RedisModuleCtx *ctx, RedisModuleCallReply *reply, RedisModu
     reply_str = RedisModule_CallReplyStringPtr(reply, &reply_len);
     pass = RedisModule_StringPtrLen(password, &pass_len);
 
-    crypt_pass = crypt_r(pass, SHA512_SALT, &cdata);
+    crypt_pass = crypt_rn(pass, reply_str, crypt_buf, sizeof(crypt_buf));
+    if (!crypt_pass) {
+        RedisModule_ReplyWithError(ctx, "ERR hash error");
+        return;
+    }
     crypt_pass_len = strlen(crypt_pass);
     if (crypt_pass_len == reply_len && !memcmp(reply_str, crypt_pass, crypt_pass_len)) {
         RedisModule_ReplyWithLongLong(ctx, 1);
