@@ -18,20 +18,20 @@ Commands
 ---
 
 ### `password.set key password`
-Works like the standard Redis SET command, but stores the hased password
+Works like the standard Redis `SET` command, but stores the hashed password
 instead of the clear text password.
 
 ### `password.check key password`
 Verifies the supplied password against the previously stored password.
-**Returns::** `0` if passwords do not match, or `1` if they match.
+**Returns:** `0` if passwords do not match, or `1` if they match.
 
 ### `password.hset key field password`
-Works like `password.set`, but stores the hashed password in a hash field
-rather than a string field.
+Works like `password.set`, but stores the hashed password in a Hash field
+rather than a String field.
 
 ### `password.hcheck key field password`
 Works like `password.check`, but uses a password stored by `password.hset`
-in a hash field.
+in a Hash field.
 
 Notes
 ---
