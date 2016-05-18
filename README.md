@@ -3,8 +3,8 @@ Redis Password Module
 
 This module provides a simple and secure way to store passwords in Redis
 and later verify them.  The passwords are stored as one-way cryptographic
-SHA512 hashes using the standard GNU C library crypt() command, so they
-cannot be retrieved but only compared against.
+hashes using the bcrypt library, so they cannot be retrieved but only
+compared against.
 
 Quick start guide
 ---
